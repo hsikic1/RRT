@@ -7,7 +7,7 @@
 #include <iostream>
 #include <string>
 #include <QMainWindow>
-#include <gtest/gtest.h>
+//#include <gtest/gtest.h>
 #include "fcl/math/bv/utility.h"
 #include "fcl/narrowphase/collision.h"
 #include "fcl/narrowphase/detail/gjk_solver_indep.h"
@@ -23,21 +23,25 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
+    explicit MainWindow(QWidget *parent = 0);
+    ~MainWindow();
+
+private:
     int sum;
+    int segNumber;
     std::vector<double> weights;
     QVector<double> x, y;
     std::vector<fcl::Vector3<double>> environmentVertices;
     std::vector<fcl::Triangle> environmentTriangles;
     std::vector<std::vector<fcl::Vector3<double>>> robotSegVertices;
     std::vector<std::vector<fcl::Triangle>> robotSegTriangles;
+    std::vector<Eigen::VectorXd> fKine;
+    std::vector<double> segLengths;
 
-    explicit MainWindow(QWidget *parent = 0);
     void traverseTree(rTreeNode *node);
     bool simpleCollisionCheck(Eigen::Vector2d center, double radius, Eigen::VectorXd A, Eigen::VectorXd B);
     double weightedNorm(Eigen::VectorXd x, int dimension);
     void makePlot();
-
-    ~MainWindow();
 
 private slots:
     void parseSTL(std::string path, std::vector<fcl::Vector3<double>> &vertices, std::vector<fcl::Triangle> &triangles);

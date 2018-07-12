@@ -236,7 +236,7 @@ double rTree::minDist(rTreeNode *point, rTreeNode *boundingBox){
             R[i] = boundingBox->T[i];
     }
 
-    return weightedNorm(point->S - R, 3);
+    return weightedNorm(point->S - R, weights.size());
 }
 
 void rTree::kNearestNeighborSearch(double k, rTreeNode *node, rTreeNode *qPoint, std::list<rTreeNode *> &nearestNeighbors, double &nearestDistance){
@@ -249,7 +249,7 @@ void rTree::kNearestNeighborSearch(double k, rTreeNode *node, rTreeNode *qPoint,
 
     if(node->nodeType){
         while(childrenIterator != node->children.end()){
-            double distance(weightedNorm((*childrenIterator)->S - qPoint->S, 3));
+            double distance(weightedNorm((*childrenIterator)->S - qPoint->S, weights.size()));
             if((distance < k)){
                 nearestNeighbors.emplace_front(*childrenIterator);
             }
@@ -293,7 +293,7 @@ void rTree::nearestNeighborSearch(rTreeNode *node, rTreeNode *qPoint, rTreeNode 
 
     if(node->nodeType){
         while(childrenIterator != node->children.end()){
-            double distance(weightedNorm((*childrenIterator)->S - qPoint->S, 3));
+            double distance(weightedNorm((*childrenIterator)->S - qPoint->S, weights.size()));
             if((distance < nearestDistance)){
                 nearestDistance = distance;
                 nearestNeighbor = (*childrenIterator);
