@@ -22,12 +22,13 @@
 #include "fcl/math/constants.h"
 #include "fcl/math/triangle.h"
 
-#define epsilon 0.2
-#define R 10.5959179423
+#define epsilon 0.090000
+#define delta 0.08
+#define R 5.5959179423
 #define segs 3
-#define a1 2.2
-#define a2 1.7
-#define a3 0.9
+#define a1 1.2
+#define a2 0.7
+#define a3 0.45
 
 
 MainWindow::MainWindow(QWidget *parent) :
@@ -38,17 +39,21 @@ MainWindow::MainWindow(QWidget *parent) :
     ui->customPlot->xAxis->setRange(-5,2*M_PI+0.1);
     ui->customPlot->yAxis->setRange(-5,2*M_PI+0.1);
 
-    weights = {1.0000,    0.6833,    0.3377};
-    segNumber = 3;
+    weights = {1.0000, 0.6833, 0.15835,  0.15835};
+    segNumber = 4;
 
-    Eigen::Vector2d xgoal(3.9,2.2);
+    Eigen::VectorXd xgoal(segNumber);
+    xgoal(0) = 0.7153;//0.646581;
+    xgoal(1) = -0.7453;//5.80049;
+    xgoal(2) = 0.801686;
+    xgoal(3) = 0.4;
     Eigen::VectorXd xinit(segNumber);
-    xinit(0) = M_PI;
+    xinit(0) = M_PI/2;
     xinit(1) = 0;
     xinit(2) = 0;
-    segLengths = {2.2, 1.7, 0.9};
-
-    std::list<std::pair<Eigen::Vector2d, double>> obstacles{std::make_pair(Eigen::Vector2d(-1.7*std::sqrt(2),1.7*sqrt(2)), 1),std::make_pair(Eigen::Vector2d(1.7*std::sqrt(2),1.7*sqrt(2)), 0.9),std::make_pair(Eigen::Vector2d(1.7*std::sqrt(2),-0.5), 0.8)};
+    xinit(3) = 0;
+    segLengths = {2.0, 1.7, 0.9, 0.9};
+    std::list<std::pair<Eigen::Vector2d, double>> obstacles{std::make_pair(Eigen::Vector2d(-1.6*5,5*sqrt(2)), 1),std::make_pair(Eigen::Vector2d(-1.6*1.4,1.8*sqrt(2)), 1),std::make_pair(Eigen::Vector2d(1.9*std::sqrt(2),1.9*sqrt(2)), 1),std::make_pair(Eigen::Vector2d(1.7*std::sqrt(2),-0.5), 1), std::make_pair(Eigen::Vector2d(5,0), 2),std::make_pair(Eigen::Vector2d(0,-2.5), 1.9)};
     initRRT(xinit, xgoal, obstacles);
 
     //loadMeshes("/home/haris/Desktop/robot/solid.robot", "");
@@ -168,18 +173,13 @@ double MainWindow::weightedNorm(Eigen::VectorXd x, int dimension){
 }
 
 bool MainWindow::simpleCollisionCheck(Eigen::Vector2d center, double radius, Eigen::VectorXd A, Eigen::VectorXd B){
-    //QVector<double>x, y;
     fKine = std::vector<Eigen::VectorXd>(segNumber + 1, Eigen::VectorXd(2));
     fKine[0](0) = 0;
     fKine[0](1) = 0;
-    /*Eigen::VectorXd fk1(2);
-    Eigen::VectorXd fk2(2);
-    Eigen::VectorXd fk3(2);*/
 
-    for(int i = 10; i > 0; i--){
-        Eigen::VectorXd step(A + (i/10.0)*epsilon*(B-A).normalized());
+    for(int i = 20; i >= 0; i--){
+        Eigen::VectorXd step(A + ((double)i/20.00)*(B-A).norm()*(B-A).normalized());
         std::vector<double> angles(segNumber, 0);
-        //double stepSum(0);
 
         for(int j = 1; j < segNumber + 1; j++){
             fKine[j](0) = 0;
@@ -193,75 +193,92 @@ bool MainWindow::simpleCollisionCheck(Eigen::Vector2d center, double radius, Eig
                 fKine[j](1) += segLengths[k]*sin(angles[k]);
             }
 
-            if((((center - (fKine[j] - fKine[j-1] - ((center-fKine[j-1]).dot((fKine[j]-fKine[j-1]).normalized()))*((fKine[j]-fKine[j-1]).normalized()))).norm() <= radius) || ((center-fKine[j-1]).norm() <= radius) || ((center-fKine[j]).norm() <= radius)))
+            if(((((center - fKine[j-1]).dot((fKine[j] - fKine[j-1]).normalized())*((fKine[j] - fKine[j-1]).normalized()) + (center - fKine[j-1])).norm() < radius + delta)) || ((center-fKine[j]).norm() <= radius + delta) || ((center-fKine[j-1]).norm() <= radius + delta))
                 return true;
         }
     }
-
     return false;
 }
 
 //8 16
-void MainWindow::initRRT(Eigen::VectorXd xinit, Eigen::Vector2d xgoal, std::list<std::pair<Eigen::Vector2d , double>> &obstacles){
+void MainWindow::initRRT(Eigen::VectorXd xinit, Eigen::VectorXd xgoal, std::list<std::pair<Eigen::Vector2d , double>> &obstacles){
     Eigen::VectorXd S(segNumber), T(segNumber);
     for(int i = 0; i < segNumber; i++){
-        S(i) = 0;
-        T(i) = 2*M_PI;
+        S(i) = -M_PI;
+        T(i) = M_PI;
     }
-
+    int missed(0);
     QPen pen;
-    rTree *nodes(new rTree(8,16,S, T, weights));
+    rTree *nodes(new rTree(2,8,S, T, weights));
     rrtNode *initRRTN(new rrtNode(xinit, nullptr, 0));
     rrtNode *rrtPtr(nullptr), *rrtNew(nullptr);
+    Eigen::VectorXd dummyVector(segNumber), dummyVector2(segNumber);
+    Eigen::VectorXd currGoal(segNumber);
+    rrtNode *dummyNode(nullptr);
+    std::vector<Eigen::VectorXd> vecs;
 
+    for(int i = 0; i <= 2 << segNumber; i++){
+        Eigen::VectorXd tempVec(segNumber);
+
+        for(int j = 0; j < segNumber; j++){
+            tempVec(j) = (-M_PI + ((i >> j) & 1)*2*M_PI);
+        }
+        vecs.push_back(tempVec);
+    }
+
+   /*for(int i = 1; i <= 7; i++){
+        if((xinit - dummyVector).norm() > (vecs[i] - xinit).norm())
+            dummyVector = vecs[i];
+        if((xgoal - dummyVector2).norm() > (vecs[i] - xgoal).norm())
+            dummyVector2 = vecs[i];
+    }*/
+
+    dummyVector = vecs[0];
+    dummyVector2 = vecs[(2 << segNumber) -1];
+    currGoal = dummyVector2;
+    dummyNode = new rrtNode(dummyVector, nullptr, 0);
+    lastNode = dummyNode;
     nodes->insertPoint(nodes->rTreeRoot, xinit, xinit, initRRTN);
     nodes->initNode = new rTreeNode(1,2,5,xinit,xinit, initRRTN);
 
     auto t1 = std::chrono::high_resolution_clock::now();
-    for(int i = 0; i < 25000; i++){
+    for(int i = 0; i < 35000; i++){
         Eigen::VectorXd xrandom(segNumber);
 
         for(int j = 0; j < segNumber; j++){
             std::random_device rd1{};
             std::seed_seq seed1{rd1(), rd1(), rd1(), rd1(), rd1(), rd1(), rd1(), rd1()};
             std::mt19937 engine1(seed1);
-            std::uniform_real_distribution<double> dist1{0.0, 2*M_PI};
+            std::uniform_real_distribution<double> dist1{lastNode->nodePosition(j), currGoal(j)};
             xrandom(j) = dist1(engine1);
         }
+        rrtNew = extendRRTStar(lastNode, nodes, xrandom, obstacles, xgoal);
+        currGoal = xgoal;
 
-        rrtNew = extendRRTStar(nodes, xrandom, obstacles, xgoal);
+        if (lastNode == nullptr){
+            lastNode = dummyNode;
+            currGoal = dummyVector2;
+            missed ++;
+        }
         if(rrtNew != nullptr)
             rrtPtr = rrtNew;
-        if(rrtPtr != nullptr)
+        if(rrtPtr != nullptr){
+            std::cout << i << std::endl;
             break;
+        }
     }
     std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
 
     double duration = std::chrono::duration_cast<std::chrono::microseconds>( t2 - t1 ).count();
     std::cout << duration << std::endl;
-
-    //traverseTree(nodes->rTreeRoot);
-    /*if(rrtPtr == nullptr)
-        return;
-
-    while(rrtPtr->parentNode != nullptr){
-        auto line = new QCPItemLine(ui->customPlot);
-        line->start->setCoords(rrtPtr->nodePosition[0], rrtPtr->nodePosition[1]);
-        line->end->setCoords(rrtPtr->parentNode->nodePosition[0], rrtPtr->parentNode->nodePosition[1]);
-        line->setHead(QCPLineEnding(QCPLineEnding::esDisc, 3));
-        line->setTail(QCPLineEnding(QCPLineEnding::esDisc, 3));
-        QPen pen;
-        pen.setWidth(2);
-        pen.setColor(QColor(163, 23, 13));
-        line->setPen(pen);
-        rrtPtr = rrtPtr->parentNode;
-    }*/
+    std::cout << "fula :" << missed << std::endl;
 
     if(rrtPtr == nullptr){
         return;
     }
 
     ui->customPlot->addGraph();
+    std::cout << rrtPtr->nodePosition << std::endl;
     while(rrtPtr != nullptr){
         std::vector<double> angles(segNumber, 0);
         Eigen::VectorXd fKineVec1(2);
@@ -305,27 +322,9 @@ void MainWindow::initRRT(Eigen::VectorXd xinit, Eigen::Vector2d xgoal, std::list
             line->end->setCoords(fKineVec2[0], fKineVec2[1]);
         }
 
-        /*line->start->setCoords(rrtPtr->nodePosition[0], rrtPtr->nodePosition[1]);
-        line->end->setCoords(rrtPtr->parent->nodePosition[0], rrtPtr->parent->nodePosition[1]);
-        line->setHead(QCPLineEnding(QCPLineEnding::esDisc, 3));
-        line->setTail(QCPLineEnding(QCPLineEnding::esDisc, 3));
-        QPen pen;
-        pen.setWidth(2);
-        pen.setColor(QColor(163, 23, 13));
-        line->setPen(pen);*/
-
-        /*if(rrtPtr->parentNode == nullptr){
-            pen.setWidth(5);
-            pen.setColor(QColor(163, 23, 13));
-            line->setPen(pen);
-            line1->setPen(pen);
-            line2->setPen(pen);
-            line3->setPen(pen);
-            break;
-        }*/
         rrtPtr = rrtPtr->parentNode;
     }
-
+    obstacles = {std::make_pair(Eigen::Vector2d(-1.6*5,5*sqrt(2)), 1),std::make_pair(Eigen::Vector2d(-1.6*1.4,1.8*sqrt(2)), 1),std::make_pair(Eigen::Vector2d(1.9*std::sqrt(2),1.9*sqrt(2)), 1),std::make_pair(Eigen::Vector2d(1.7*std::sqrt(2),-0.5), 1), std::make_pair(Eigen::Vector2d(5,0), 2),std::make_pair(Eigen::Vector2d(0,-2.5), 1.9)};
     std::list<std::pair<Eigen::Vector2d, double>>::iterator obstacleIterator(obstacles.begin());
 
     QVector<double> x(0), y(0);
@@ -345,13 +344,14 @@ void MainWindow::initRRT(Eigen::VectorXd xinit, Eigen::Vector2d xgoal, std::list
 }
 
 //EXTEND RRT*
-rrtNode *MainWindow::extendRRTStar(rTree *nodes, Eigen::VectorXd xrandom, std::list<std::pair<Eigen::Vector2d , double>> &obstacles, Eigen::Vector2d xgoal){
+rrtNode *MainWindow::extendRRTStar(rrtNode *&epsilonNode, rTree *nodes, Eigen::VectorXd xrandom, std::list<std::pair<Eigen::Vector2d , double>> &obstacles, Eigen::VectorXd xgoal){
     std::list<std::pair<Eigen::Vector2d, double>>::iterator obstacleIterator(obstacles.begin());
     std::list<rTreeNode *>::iterator nIterator;
     std::list<rTreeNode *> nearestNeighbors;
     rTreeNode *xmin(nodes->initNode);
     double dist(weightedNorm(xrandom - nodes->initNode->S, segNumber)); //norm()
 
+    epsilonNode = nullptr;
     nodes->nearestNeighborSearch(nodes->rTreeRoot, new rTreeNode(1,2,5, xrandom, xrandom, nullptr), xmin, dist); //
 
     Eigen::VectorXd xepsilon(epsilon*(xrandom - xmin->S).normalized() + xmin->S); //srediti normiranje
@@ -362,7 +362,7 @@ rrtNode *MainWindow::extendRRTStar(rTree *nodes, Eigen::VectorXd xrandom, std::l
         obstacleIterator++;
     }
 
-    double m = std::min(2*epsilon, R*std::sqrt(std::log10(nodes->size)/((double)(nodes->size))));
+    double m = std::min(epsilon, R*std::sqrt(std::log10(nodes->size)/((double)(nodes->size))));
     dist = weightedNorm(xrandom - nodes->initNode->S,segNumber);  //.norm();
     nodes->kNearestNeighborSearch(m, nodes->rTreeRoot, new rTreeNode(1,2,5, xepsilon, xepsilon, nullptr), nearestNeighbors, dist);
 
@@ -396,26 +396,16 @@ rrtNode *MainWindow::extendRRTStar(rTree *nodes, Eigen::VectorXd xrandom, std::l
 
     nIterator = nearestNeighbors.begin();
     while(nIterator != nearestNeighbors.end()){
-        if((*nIterator != xmin) && (*nIterator)->treeNode->cost > weightedNorm((*nIterator)->S - xepsilon, segNumber) + insertedNode->cost){
+        if((*nIterator != xmin) && (*nIterator)->treeNode->cost > weightedNorm((*nIterator)->S - xmin->S, segNumber) + insertedNode->cost){ //s - xepsilon
             (*nIterator)->treeNode->parentNode = insertedNode;
             (*nIterator)->treeNode->cost = weightedNorm((*nIterator)->S - xepsilon, segNumber) + insertedNode->cost;
         }
         nIterator++;
     }
 
-    double confSum(0);
-    Eigen::VectorXd fk(2);
-    fk(0) = 0;
-    fk(1) = 0;
-
-    for(int i = 0; i < segNumber; i++){
-        confSum += xepsilon[i];
-        fk(0) += segLengths[i]*std::cos(confSum);
-        fk(1) += segLengths[i]*std::sin(confSum);
-    }
-
-    if((fk - xgoal).norm() <= 0.1)
+    if((xepsilon - xgoal).norm() <= 0.1)
         return insertedNode;
 
+    epsilonNode = insertedNode;
     return nullptr;
 }

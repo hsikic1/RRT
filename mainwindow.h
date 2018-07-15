@@ -37,6 +37,7 @@ private:
     std::vector<std::vector<fcl::Triangle>> robotSegTriangles;
     std::vector<Eigen::VectorXd> fKine;
     std::vector<double> segLengths;
+    rrtNode *lastNode;
 
     void traverseTree(rTreeNode *node);
     bool simpleCollisionCheck(Eigen::Vector2d center, double radius, Eigen::VectorXd A, Eigen::VectorXd B);
@@ -46,8 +47,8 @@ private:
 private slots:
     void parseSTL(std::string path, std::vector<fcl::Vector3<double>> &vertices, std::vector<fcl::Triangle> &triangles);
     void loadMeshes(std::string robotPath, std::string envPath);
-    void initRRT(Eigen::VectorXd xinit, Eigen::Vector2d xgoal, std::list<std::pair<Eigen::Vector2d , double>> &obstacles);
-    rrtNode *extendRRTStar(rTree *nodes, Eigen::VectorXd xrandom, std::list<std::pair<Eigen::Vector2d, double>> &obstacles, Eigen::Vector2d xgoal);
+    void initRRT(Eigen::VectorXd xinit, Eigen::VectorXd xgoal, std::list<std::pair<Eigen::Vector2d , double>> &obstacles);
+    rrtNode *extendRRTStar(rrtNode *&epsilonNode, rTree *nodes, Eigen::VectorXd xrandom, std::list<std::pair<Eigen::Vector2d, double>> &obstacles, Eigen::VectorXd xgoal);
 
 private:
     Ui::MainWindow *ui;
